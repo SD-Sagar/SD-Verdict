@@ -29,8 +29,8 @@ function Logo({ className = "w-10 h-10" }) {
         </filter>
       </defs>
       <rect x="8" y="8" width="84" height="84" rx="20" fill="rgba(14, 11, 25, 0.8)" stroke="url(#logoGrad)" strokeWidth="3" filter="url(#logoGlow)" />
-      {/* R & D merged initials - Sassy 'R' */}
-      <path d="M 28 64 L 28 36 Q 44 36 44 45 Q 44 52 28 52 L 36 52 Q 44 58 46 64" stroke="url(#logoGrad)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      {/* S & D merged initials - Clean and perfectly visible */}
+      <path d="M 42 36 L 32 36 Q 26 36 26 43 Q 26 50 32 50 L 36 50 Q 42 50 42 57 Q 42 64 36 64 L 26 64" stroke="url(#logoGrad)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M 52 36 L 62 36 Q 74 36 74 50 Q 74 64 62 64 L 52 64 Z" stroke="url(#logoGrad)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M 48 28 L 48 72" stroke="url(#logoGrad)" strokeWidth="2.5" strokeLinecap="round" />
       {/* Small Judgment Stamp Tick */}
@@ -70,6 +70,7 @@ export default function App() {
 
   // Verdict dashboard states
   const [loadingPhase, setLoadingPhase] = useState('Initializing analysis...');
+  const [showQuotaWarning, setShowQuotaWarning] = useState(false);
   const [verdictData, setVerdictData] = useState(null);
   const [dashboardTab, setDashboardTab] = useState('verdict'); // verdict, criteria
   const [isSharedMode, setIsSharedMode] = useState(false);
@@ -173,6 +174,7 @@ export default function App() {
       
       setCategories(mappedCats);
       setStep('CATEGORIES');
+      if (data.isApiFallback) setShowQuotaWarning(true);
     } catch (err) {
       console.error(err);
       alert("Failed to analyze inputs. Please verify API configuration.");
@@ -225,6 +227,7 @@ export default function App() {
       setVerdictData(verdict);
       setStep('DASHBOARD');
       setDashboardTab('verdict');
+      if (verdict.isApiFallback) setShowQuotaWarning(true);
     } catch (err) {
       console.error(err);
       alert("Verdict generation failed. Reverting to category setup.");
@@ -238,6 +241,7 @@ export default function App() {
     setVerdictData(null);
     setCategories([]);
     setStep('INPUT');
+    setShowQuotaWarning(false);
   };
 
   return (
@@ -284,6 +288,22 @@ export default function App() {
       {/* Main Body Grid */}
       <main className={`flex-grow w-full mx-auto px-4 py-6 flex flex-col justify-start transition-all duration-300 ${step === 'DASHBOARD' ? 'max-w-6xl' : 'max-w-lg'}`}>
         
+        {/* API Quota Warning Banner */}
+        {showQuotaWarning && (
+          <div className="w-full max-w-lg mx-auto mb-6 p-4 rounded-xl border border-orange-500/30 bg-orange-500/10 flex gap-3 animate-slide-up shadow-lg shadow-orange-500/5 relative z-10">
+            <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1.5">
+              <h4 className="text-sm font-bold text-orange-400 tracking-tight">System Quota Reached</h4>
+              <p className="text-xs md:text-sm text-orange-200/80 leading-relaxed">
+                Our primary AI engine has reached its maximum bandwidth limits. You are viewing generic fallback results. To generate deep, live AI analysis immediately, you can <button type="button" onClick={() => setSettingsOpen(true)} className="underline font-semibold text-orange-300 hover:text-white transition">use your own API Key</button>, or please wait 24 hours for the quota to reset.
+              </p>
+            </div>
+            <button type="button" onClick={() => setShowQuotaWarning(false)} className="self-start text-orange-400 hover:text-white transition p-1 bg-orange-500/20 rounded-lg">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* ================= SCREEN 1: INPUT ================= */}
         {step === 'INPUT' && (
           <div className="space-y-6 animate-slide-up">

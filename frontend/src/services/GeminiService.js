@@ -247,7 +247,8 @@ Return a JSON object matching this schema exactly:
   } catch (err) {
     console.error("GeminiService Error (classification):", err);
     // Graceful fallback to mock data
-    return getMockClassification(items);
+    const mock = getMockClassification(items);
+    return { ...mock, isApiFallback: true };
   }
 };
 
@@ -324,6 +325,7 @@ Return a JSON object matching this schema exactly:
   } catch (err) {
     console.error("GeminiService Error (verdict):", err);
     // Graceful fallback to mock data
-    return getMockVerdict(items, categories, mode);
+    const mock = getMockVerdict(items, categories, mode);
+    return { ...mock, isApiFallback: true };
   }
 };

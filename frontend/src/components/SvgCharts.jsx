@@ -143,18 +143,31 @@ export function RadarChart({ items, categories, scores }) {
           })}
 
           {/* Category Text Labels */}
-          {labelPositions.map((pos, i) => (
-            <text
-              key={`label-${i}`}
-              x={pos.x}
-              y={pos.y}
-              textAnchor={pos.textAnchor}
-              dy={pos.dy}
-              className="fill-gray-400 font-medium text-[9px] md:text-[11px] tracking-tight uppercase"
-            >
-              {pos.name}
-            </text>
-          ))}
+          {labelPositions.map((pos, i) => {
+            const words = pos.name.split(' ');
+            return (
+              <text
+                key={`label-${i}`}
+                x={pos.x}
+                y={pos.y}
+                textAnchor={pos.textAnchor}
+                className="fill-gray-400 font-medium text-[9px] md:text-[11px] tracking-tight uppercase"
+              >
+                {words.map((word, wIdx) => {
+                  const startDy = -(words.length - 1) * 0.5 + "em";
+                  return (
+                    <tspan
+                      key={`tspan-${i}-${wIdx}`}
+                      x={pos.x}
+                      dy={wIdx === 0 ? startDy : '1.1em'}
+                    >
+                      {word}
+                    </tspan>
+                  );
+                })}
+              </text>
+            );
+          })}
         </svg>
       </div>
 
