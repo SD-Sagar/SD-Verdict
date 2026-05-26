@@ -81,12 +81,16 @@ To deploy the application on Netlify:
 
 1.  Create a Netlify account and click **Add new site** > **Import an existing project**.
 2.  Connect to your Git provider and select the repository.
-3.  Configure the build configuration settings:
+3.  Configure the exact build settings as follows:
     *   **Base directory**: `frontend`
     *   **Build command**: `npm run build`
-    *   **Publish directory**: `frontend/dist`
-4.  Expand the **Environment variables** section:
-    *   Add a variable named `VITE_GEMINI_API_KEY` with your API key.
+    *   **Publish directory**: `dist` *(Note: Since the base directory is frontend, this must just be `dist`, not `frontend/dist`)*
+    *   **Functions directory**: *(Leave blank)*
+4.  Expand the **Environment variables** section by clicking on it, then click **Add a variable** > **Add a single variable**. 
+    Netlify will present you with two boxes to fill out:
+    *   **Key** (left box): Type exactly `VITE_GEMINI_API_KEY` (must be uppercase, no spaces).
+    *   **Value** (right box): Paste your actual Google Gemini API key (e.g., `AIzaSy...`).
+    *(Note: Netlify injects this securely into the Vite build process. It will not be exposed in your GitHub repository.)*
 5.  Click **Deploy site**.
 
 ---
