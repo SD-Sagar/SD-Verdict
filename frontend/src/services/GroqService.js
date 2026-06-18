@@ -204,21 +204,22 @@ export const classifyAndGenerateCategories = async (items, apiKeyOverride) => {
 
   if (!apiKey) {
     // Return mock data if no key is configured
-    console.log("GeminiService: Using mock classification (No API Key)");
+    console.log("GroqService: Using mock classification (No API Key)");
     return new Promise((resolve) => {
       setTimeout(() => resolve(getMockClassification(items)), 800);
     });
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-flash-latest",
-      generationConfig: { responseMimeType: "application/json" }
-    });
+  const maxRetries = 3;
+  let lastError;
 
-    const prompt = `You are an elite, highly intelligent classification engine for a decision intelligence application called SD Verdict.
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const prompt = `You are an elite, highly intelligent classification engine for a decision intelligence application called SD Verdict.
 Analyze the following comparison items: ${JSON.stringify(items)}.
+
+IMPORTANT: You MUST respond with ONLY valid JSON, nothing else.
+
 First, determine the specific domain (e.g., "GPUs", "Frameworks", "Public Figures vs Objects", "Abstract Concepts").
 Then, classify the comparison into one of three modes:
 1. "RANKING" (same-domain comparisons, like iPhone vs Pixel, RTX 3090 vs RX 6500 XT. Can be scored and ranked).
@@ -228,7 +229,7 @@ Then, classify the comparison into one of three modes:
 Next, generate 3 to 5 highly specific, creatively named comparison categories. 
 CRITICAL RULE: DO NOT use generic, boring names like "Performance", "Design", "Value", or "Features". Make them ALIVE, engaging, and hyper-tailored to the specific items. Use domain-specific jargon (e.g., "VRAM Bandwidth" for GPUs, "Ecosystem Synergy" for tech, "Photosynthetic Output" for plants).
 
-Return a JSON object matching this schema exactly:
+Return ONLY this JSON object and nothing else:
 {
   "mode": "RANKING" | "ANALYTICAL" | "NEUTRAL",
   "reason": "Brief, witty explanation of why this mode was selected and what these entities fundamentally are.",
@@ -237,24 +238,77 @@ Return a JSON object matching this schema exactly:
   ]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const data = JSON.parse(text);
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      });
 
-    // Ensure IDs are present
-    if (data.categories) {
-      data.categories = data.categories.map((c, idx) => ({
-        id: c.id || `cat-${idx + 1}`,
-        name: c.name
-      }));
+      if (!response.ok) {
+        const errorData = await response.json();
+        const err = new Error(errorData.error?.message || "API Error");
+        err.status = response.status;
+        throw err;
+      }
+
+      const data = await response.json();
+      const jsonText = data.choices[0].message.content;
+      
+      // Try to extract JSON if the response contains extra text
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        // Try to extract JSON from the response
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("Could not extract JSON from response");
+        }
+      }
+
+      // Ensure IDs are present
+      if (parsed.categories) {
+        parsed.categories = parsed.categories.map((c, idx) => ({
+          id: c.id || `cat-${idx + 1}`,
+          name: c.name
+        }));
+      }
+      console.log("Classification successful on attempt", attempt + 1);
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      console.error(`Classification attempt ${attempt + 1} failed:`, err.message);
+      
+      // If it's a 429 (rate limit), retry with exponential backoff
+      if (err.status === 429 && attempt < maxRetries - 1) {
+        const delayMs = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying after ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      // For other errors or final retry, break
+      break;
     }
-    return data;
-  } catch (err) {
-    console.error("GeminiService Error (classification):", err);
-    // Graceful fallback to mock data
-    const mock = getMockClassification(items);
-    return { ...mock, isApiFallback: true };
   }
+
+  console.error("GroqService Error (classification):", lastError);
+  console.error("Error message:", lastError?.message);
+  console.error("Error status:", lastError?.status);
+  
+  // Graceful fallback to mock data
+  const mock = getMockClassification(items);
+  return { ...mock, isApiFallback: true };
 };
 
 // 2. Detailed Verdict Generation
@@ -262,75 +316,178 @@ export const generateDetailedVerdict = async (items, categories, mode, apiKeyOve
   const apiKey = apiKeyOverride || getApiKey();
 
   if (!apiKey) {
-    console.log("GeminiService: Using mock verdict (No API Key)");
+    console.log("GroqService: Using mock verdict (No API Key)");
     return new Promise((resolve) => {
       setTimeout(() => resolve(getMockVerdict(items, categories, mode)), 1200);
     });
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-flash-latest",
-      generationConfig: { responseMimeType: "application/json" }
-    });
+  const maxRetries = 3;
+  let lastError;
 
-    let prompt = "";
-    const catNames = categories.map(c => c.name);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      let prompt = "";
+      const catNames = categories.map(c => c.name);
 
-    if (mode === "NEUTRAL") {
-      prompt = `You are an elite, highly intelligent AI decision engine. Evaluate these items: ${JSON.stringify(items)} across these highly specific categories: ${JSON.stringify(catNames)}.
+      if (mode === "NEUTRAL") {
+        prompt = `You are an elite, highly intelligent AI decision engine. Evaluate these items: ${JSON.stringify(items)} across these highly specific categories: ${JSON.stringify(catNames)}.
+
+IMPORTANT: You MUST respond with ONLY valid JSON, nothing else.
+
 This is a NEUTRAL mode comparison because it is asymmetric, absurd, or involves people (e.g., "Modi vs Tree", "Rock vs Sky").
 CRITICAL INSTRUCTIONS:
 1. DO NOT output any numeric scores, rankings, or designate a winner. 
 2. Explicitly REFUSE to compare them in a conventional sense, but do it in a witty, highly engaging, and lively manner!
 3. Highlight the absurdity of the comparison or the fundamentally distinct nature of the entities. Make the analysis fun, insightful, and non-repetitive.
 4. Explain what these entities actually are in the real world.
-Return a JSON object matching this schema exactly:
+5. CRITICAL: The "matrix" object MUST contain an entry for EACH item in the list. Follow this structure exactly:
+   - For each item name in the list, create a key
+   - For each category, add a witty description
+   - Do NOT omit any items from the matrix object
+
+Here are the items you must analyze (ALL OF THEM): ${items.map((i, idx) => `${idx + 1}. "${i}"`).join(', ')}
+
+Return ONLY this JSON object with analysis for ALL items and ALL categories:
 {
   "confidence": number (10-100),
   "reasoningSummary": "A lively, witty, and highly engaging summary explaining the fundamental nature of these items and the sheer absurdity or complexity of comparing them. Refuse a conventional winner.",
   "tradeOffs": ["Witty insight 1", "Witty insight 2", "Witty insight 3"],
   "winner": null,
   "matrix": {
-    "itemName1": {
-      "categoryName1": "Lively, non-boring description of itemName1 under categoryName1",
-      "categoryName2": "Lively, non-boring description of itemName1 under categoryName2"
-    }
+    "${items[0]}": {
+      "${catNames[0]}": "Lively, non-boring description of ${items[0]} under ${catNames[0]}"${catNames.length > 1 ? `,\n      "${catNames[1]}": "Lively, non-boring description of ${items[0]} under ${catNames[1]}"` : ''}
+    }${items.length > 1 ? `,\n    "${items[1]}": {\n      "${catNames[0]}": "Lively, non-boring description of ${items[1]} under ${catNames[0]}"${catNames.length > 1 ? `,\n      "${catNames[1]}": "Lively, non-boring description of ${items[1]} under ${catNames[1]}"` : ''}\n    }` : ''}
   }
 }`;
-    } else {
-      const isRanking = mode === "RANKING";
-      prompt = `You are an elite, expert AI decision engine. Evaluate these items: ${JSON.stringify(items)} across these highly specific categories: ${JSON.stringify(catNames)}.
+      } else {
+        const isRanking = mode === "RANKING";
+        prompt = `You are an elite, expert AI decision engine. Evaluate these items: ${JSON.stringify(items)} across these highly specific categories: ${JSON.stringify(catNames)}.
+
+IMPORTANT: You MUST respond with ONLY valid JSON, nothing else.
+
 Comparison Mode: ${mode}.
 CRITICAL INSTRUCTIONS:
 1. Identify EXACTLY what these items are (e.g., "High-end GPUs", "Web Frameworks").
 2. Provide deep, expert-level analysis using appropriate domain jargon. Do not be generic or repetitive. Make the analysis read like it was written by an absolute elite expert in the field.
 3. ${isRanking ? "Provide numeric scores (0 to 100) per category for each item. Declare an absolute winner from the list of items based on the scores." : "Provide numeric scores (0 to 100) per category for each item. Do NOT declare a winner (winner should be null)."}
+4. CRITICAL: The "scores" object MUST contain an entry for EACH item in the list. Follow this structure exactly:
+   - For each item name in the list, create a key
+   - For each category, add score and reason
+   - Do NOT omit any items from the scores object
 
-Return a JSON object matching this schema exactly:
+Here are the items you must analyze (ALL OF THEM): ${items.map((i, idx) => `${idx + 1}. "${i}"`).join(', ')}
+
+Return ONLY this JSON object with COMPLETE scores for ALL items:
 {
   "confidence": number (0-100, based on evaluation certainty),
   "reasoningSummary": "An elite, expert-level breakdown of how the items compare. Explicitly mention what the items actually are (e.g. 'Both are high-end desktop GPUs...').",
   "tradeOffs": ["Deep technical or structural trade-off 1 (max 20 words)", "Deep technical or structural trade-off 2 (max 20 words)", "Deep technical or structural trade-off 3 (max 20 words)"],
   "winner": ${isRanking ? '"Name of the winning item (exactly matches one of the items)"' : "null"},
   "scores": {
-    "itemName1": {
-      "categoryName1": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" },
-      "categoryName2": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" }
-    }
+    "${items[0]}": {
+      "${catNames[0]}": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" }${catNames.length > 1 ? `,\n      "${catNames[1]}": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" }` : ''}
+    }${items.length > 1 ? `,\n    "${items[1]}": {\n      "${catNames[0]}": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" }${catNames.length > 1 ? `,\n      "${catNames[1]}": { "score": number (0-100), "reason": "Expert, highly specific explanation (max 15 words)" }` : ''}\n    }` : ''}
   }
 }`;
-    }
+      }
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const data = JSON.parse(text);
-    return data;
-  } catch (err) {
-    console.error("GeminiService Error (verdict):", err);
-    // Graceful fallback to mock data
-    const mock = getMockVerdict(items, categories, mode);
-    return { ...mock, isApiFallback: true };
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        const err = new Error(errorData.error?.message || "API Error");
+        err.status = response.status;
+        throw err;
+      }
+
+      const data = await response.json();
+      const jsonText = data.choices[0].message.content;
+      
+      // Try to extract JSON if the response contains extra text
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        // Try to extract JSON from the response
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("Could not extract JSON from response");
+        }
+      }
+      
+      // VALIDATION: Ensure all items are present in the response
+      if (mode === "NEUTRAL") {
+        // For NEUTRAL mode, check matrix has all items
+        if (!parsed.matrix) parsed.matrix = {};
+        const missingItems = items.filter(item => !parsed.matrix[item]);
+        if (missingItems.length > 0) {
+          console.warn(`Missing items in NEUTRAL matrix: ${missingItems.join(', ')}`);
+          // Fill in missing items with placeholder analysis
+          missingItems.forEach(item => {
+            parsed.matrix[item] = {};
+            (categories || []).forEach(cat => {
+              parsed.matrix[item][cat.name] = `${item} presents a unique ontological perspective regarding ${cat.name}.`;
+            });
+          });
+        }
+      } else {
+        // For RANKING/ANALYTICAL mode, check scores has all items
+        if (!parsed.scores) parsed.scores = {};
+        const missingItems = items.filter(item => !parsed.scores[item]);
+        if (missingItems.length > 0) {
+          console.warn(`Missing items in scores: ${missingItems.join(', ')}`);
+          // Fill in missing items with placeholder scores
+          missingItems.forEach(item => {
+            parsed.scores[item] = {};
+            (categories || []).forEach(cat => {
+              parsed.scores[item][cat.name] = {
+                score: 70,
+                reason: `Requires deeper domain analysis.`
+              };
+            });
+          });
+        }
+      }
+      
+      console.log("Verdict generation successful on attempt", attempt + 1);
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      console.error(`Verdict attempt ${attempt + 1} failed:`, err.message);
+      
+      // If it's a 429 (rate limit), retry with exponential backoff
+      if (err.status === 429 && attempt < maxRetries - 1) {
+        const delayMs = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`Retrying after ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      // For other errors or final retry, break
+      break;
+    }
   }
+
+  console.error("GroqService Error (verdict):", lastError);
+  console.error("Error message:", lastError?.message);
+  console.error("Error status:", lastError?.status);
+  
+  // Graceful fallback to mock data
+  const mock = getMockVerdict(items, categories, mode);
+  return { ...mock, isApiFallback: true };
 };

@@ -9,7 +9,7 @@ import {
   generateDetailedVerdict, 
   hasApiKey, 
   getApiKey 
-} from './services/GeminiService';
+} from './services/GroqService';
 import SettingsModal from './components/SettingsModal';
 import { RadarChart, BarChart } from './components/SvgCharts';
 import ShareCard from './components/ShareCard';

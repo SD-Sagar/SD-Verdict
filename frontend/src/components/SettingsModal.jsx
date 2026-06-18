@@ -6,20 +6,20 @@ export default function SettingsModal({ isOpen, onClose, onKeyChange }) {
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('SD_VERDICT_GEMINI_API_KEY') || '';
+    const savedKey = localStorage.getItem('SD_VERDICT_GROQ_API_KEY') || '';
     setKeyInput(savedKey);
     setIsSaved(savedKey.trim() !== '');
   }, [isOpen]);
 
   const handleSave = () => {
-    localStorage.setItem('SD_VERDICT_GEMINI_API_KEY', keyInput.trim());
+    localStorage.setItem('SD_VERDICT_GROQ_API_KEY', keyInput.trim());
     setIsSaved(keyInput.trim() !== '');
     if (onKeyChange) onKeyChange();
     onClose();
   };
 
   const handleClear = () => {
-    localStorage.removeItem('SD_VERDICT_GEMINI_API_KEY');
+    localStorage.removeItem('SD_VERDICT_GROQ_API_KEY');
     setKeyInput('');
     setIsSaved(false);
     if (onKeyChange) onKeyChange();
@@ -56,25 +56,25 @@ export default function SettingsModal({ isOpen, onClose, onKeyChange }) {
 
         <div className="space-y-4">
           <p className="text-sm text-gray-300 leading-relaxed">
-            By default, SD Verdict uses the pre-configured system key. If you have your own Google Gemini API Key and want to bypass potential shared rate limits, you can enter it below.
+            By default, SD Verdict uses the pre-configured system key. If you have your own Groq API Key and want to bypass potential shared rate limits, you can enter it below.
           </p>
 
           <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/20 flex gap-3 text-xs text-purple-200">
             <Key className="w-4 h-4 shrink-0 text-purple-400 mt-0.5" />
             <div>
-              Your key is saved locally in your browser (<code className="bg-purple-950/50 px-1 rounded">localStorage</code>) and is sent directly to Google. It never touches our servers.
+              Your key is saved locally in your browser (<code className="bg-purple-950/50 px-1 rounded">localStorage</code>) and is sent directly to Groq. It never touches our servers.
             </div>
           </div>
 
           <div>
             <label htmlFor="apiKey" className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Gemini API Key
+              Groq API Key
             </label>
             <div className="relative flex items-center">
               <input
                 id="apiKey"
                 type="password"
-                placeholder="AIzaSy..."
+                placeholder="gsk_..."
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 className="w-full px-4 py-3 bg-black/40 border border-white/15 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-sm transition"
