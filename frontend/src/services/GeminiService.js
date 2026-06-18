@@ -1,12 +1,19 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Retrieve the Gemini API key from environment variables or custom input
+// Priority: Environment variable > localStorage override
 export const getApiKey = () => {
+  // Check environment variable first (production priority)
+  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (envKey && envKey.trim() !== "") {
+    return envKey;
+  }
+  // Fall back to localStorage (user override)
   const localKey = localStorage.getItem("SD_VERDICT_GEMINI_API_KEY");
   if (localKey && localKey.trim() !== "") {
     return localKey;
   }
-  return import.meta.env.VITE_GEMINI_API_KEY || "";
+  return "";
 };
 
 export const hasApiKey = () => {
